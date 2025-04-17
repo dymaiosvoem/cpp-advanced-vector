@@ -221,14 +221,6 @@ public:
         return begin() + distance_to_emplace;
     }
 
-    iterator Insert(const_iterator pos, const T& value) {
-        return Emplace(pos, value);
-    }
-
-    iterator Insert(const_iterator pos, T&& value) {
-        return Emplace(pos, std::move(value));
-    }
-
     iterator Erase(const_iterator pos) {
         size_t pos_to_erase = std::distance(cbegin(), pos);
         size_t new_size = size_ - 1;
@@ -246,6 +238,14 @@ public:
         std::destroy_at(end() - 1);
         size_ = new_size;
         return begin() + pos_to_erase;
+    }
+
+    iterator Insert(const_iterator pos, const T& value) {
+        return Emplace(pos, value);
+    }
+
+    iterator Insert(const_iterator pos, T&& value) {
+        return Emplace(pos, std::move(value));
     }
 
     void PopBack() noexcept {
