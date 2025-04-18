@@ -137,13 +137,11 @@ public:
             } else {
                 if (size_ > rhs.Size()) {
                     std::destroy_n(data_ + rhs.Size(), size_ - rhs.Size());
-                    std::copy(rhs.data_.GetAddress(), rhs.data_.GetAddress() + rhs.Size(), data_.GetAddress());
-                    size_ = rhs.Size();
                 } else {
                     std::uninitialized_copy_n(rhs.data_ + size_, rhs.Size() - size_, data_.GetAddress() + size_);
-                    std::copy(rhs.data_.GetAddress(), rhs.data_.GetAddress() + size_, data_.GetAddress());
-                    size_ = rhs.Size();
                 }
+                std::copy_n(rhs.data_.GetAddress(), std::min(rhs.Size(), size_), data_.GetAddress());
+                size_ = rhs.Size();
             }
         }
         return *this;
@@ -163,58 +161,54 @@ public:
 
     template <typename ... Args>
     T& EmplaceBack(Args&& ... args) {
-        size_t new_size = size_ + 1;
+        auto emplace_back_it = Emplace(end(), std::forward<Args>(args)...);
+        return *emplace_back_it;
+    }
 
-        if (Capacity() >= new_size) {
-            new (data_.GetAddress() + size_) T(std::forward<Args>(args)...);
+    template <typename ... Args>
+    void EmplaceWithoutRellocate(const_iterator pos, Args&& ... args) {
+        size_t distance_to_emplace = static_cast<size_t>(std::distance(cbegin(), pos));
+
+        if (pos == end()) {
+            new (end()) T(std::forward<Args>(args)...);
         } else {
-            RawMemory<T> new_vec(size_ == 0 ? 1 : size_ * 2);
-            new (new_vec.GetAddress() + size_) T(std::forward<Args>(args)...);
+            T temp_args(std::forward<Args>(args)...);
 
-            if constexpr (std::is_nothrow_move_constructible_v<T> || !std::is_copy_constructible_v<T>) {
-                std::uninitialized_move_n(data_.GetAddress(), size_, new_vec.GetAddress());
-                std::destroy_n(data_.GetAddress(), size_);
-            } else {
-                std::uninitialized_copy_n(data_.GetAddress(), size_, new_vec.GetAddress());
-                std::destroy_n(data_.GetAddress(), size_);
-            }
-            data_.Swap(new_vec);
+            new (end()) T(std::forward<T>(data_[size_ - 1]));
+            std::move_backward(begin() + distance_to_emplace, end() - 1, end());
+            data_[distance_to_emplace] = std::move(temp_args);
         }
+    }
 
-        size_ = new_size;
-        return data_[size_ - 1];
+    template <typename ... Args>
+    void EmplaceWithRellocate(const_iterator pos, Args&& ... args) {
+        size_t distance_to_emplace = static_cast<size_t>(std::distance(cbegin(), pos));
+        size_t distance_to_end = static_cast<size_t>(std::distance(pos, cend()));
+
+        RawMemory<T> new_vec(size_ == 0 ? 1 : size_ * 2);
+        new (new_vec.GetAddress() + distance_to_emplace) T(std::forward<Args>(args)...);
+
+        if constexpr (std::is_nothrow_move_constructible_v<T> || !std::is_copy_constructible_v<T>) {
+            std::uninitialized_move_n(begin(), distance_to_emplace, new_vec.GetAddress());
+            std::uninitialized_move_n(begin() + distance_to_emplace, distance_to_end, new_vec.GetAddress() + distance_to_emplace + 1);
+            std::destroy_n(begin(), size_);
+        } else {
+            std::uninitialized_copy_n(begin(), distance_to_emplace, new_vec.GetAddress());
+            std::uninitialized_copy_n(begin() + distance_to_emplace, distance_to_end, new_vec.GetAddress() + distance_to_emplace + 1);
+            std::destroy_n(begin(), size_);
+        }
+        data_.Swap(new_vec);
     }
 
     template <typename ... Args>
     iterator Emplace(const_iterator pos, Args&& ... args) {
-        size_t distance_to_emplace = std::distance(cbegin(), pos);
-        size_t distance_to_end = std::distance(pos, cend());
+        size_t distance_to_emplace = static_cast<size_t>(std::distance(cbegin(), pos));
         size_t new_size = size_ + 1;
 
         if (Capacity() >= new_size) {
-            if (pos == end()) {
-                new (end()) T(std::forward<Args>(args)...);
-            } else {
-                T temp_args(std::forward<Args>(args)...);
-
-                new (end()) T(std::forward<T>(data_[size_ - 1]));
-                std::move_backward(begin() + distance_to_emplace, end() - 1, end());
-                data_[distance_to_emplace] = std::move(temp_args);
-            }
+            EmplaceWithoutRellocate(pos, std::forward<Args>(args)...);
         } else {
-            RawMemory<T> new_vec(size_ == 0 ? 1 : size_ * 2);
-            new (new_vec.GetAddress() + distance_to_emplace) T(std::forward<Args>(args)...);
-
-            if constexpr (std::is_nothrow_move_constructible_v<T> || !std::is_copy_constructible_v<T>) {
-                std::uninitialized_move_n(begin(), distance_to_emplace, new_vec.GetAddress());
-                std::uninitialized_move_n(begin() + distance_to_emplace, distance_to_end, new_vec.GetAddress() + distance_to_emplace + 1);
-                std::destroy_n(begin(), size_);
-            } else {
-                std::uninitialized_copy_n(begin(), distance_to_emplace, new_vec.GetAddress());
-                std::uninitialized_copy_n(begin() + distance_to_emplace, distance_to_end, new_vec.GetAddress() + distance_to_emplace + 1);
-                std::destroy_n(begin(), size_);
-            }
-            data_.Swap(new_vec);
+            EmplaceWithRellocate(pos, std::forward<Args>(args)...);
         }
 
         size_ = new_size;
@@ -222,7 +216,9 @@ public:
     }
 
     iterator Erase(const_iterator pos) {
-        size_t pos_to_erase = std::distance(cbegin(), pos);
+        size_t pos_to_erase = static_cast<size_t>(std::distance(cbegin(), pos));
+        
+        assert(size_ != 0);
         size_t new_size = size_ - 1;
 
         if (std::is_move_assignable_v<T>) {
@@ -260,19 +256,9 @@ public:
         size_t new_size = size_ + 1;
 
         if (Capacity() >= new_size) {
-            new (data_.GetAddress() + size_) T(value);
+            EmplaceWithoutRellocate(end(), value);
         } else {
-            RawMemory<T> new_vec(size_ == 0 ? 1 : size_ * 2);
-            new (new_vec.GetAddress() + size_) T(value);
-
-            if constexpr (std::is_nothrow_move_constructible_v<T> || !std::is_copy_constructible_v<T>) {
-                std::uninitialized_move_n(data_.GetAddress(), size_, new_vec.GetAddress());
-                std::destroy_n(data_.GetAddress(), size_);
-            } else {
-                std::uninitialized_copy_n(data_.GetAddress(), size_, new_vec.GetAddress());
-                std::destroy_n(data_.GetAddress(), size_);
-            }
-            data_.Swap(new_vec);
+            EmplaceWithRellocate(end(), value);
         }
 
         size_ = new_size;
@@ -282,19 +268,9 @@ public:
         size_t new_size = size_ + 1;
 
         if (Capacity() >= new_size) {
-            new (data_.GetAddress() + size_) T(std::move(value));
+            EmplaceWithoutRellocate(end(), std::move(value));
         } else {
-            RawMemory<T> new_vec(size_ == 0 ? 1 : size_ * 2);
-            new (new_vec.GetAddress() + size_) T(std::move(value));
-
-            if constexpr (std::is_nothrow_move_constructible_v<T> || !std::is_copy_constructible_v<T>) {
-                std::uninitialized_move_n(data_.GetAddress(), size_, new_vec.GetAddress());
-                std::destroy_n(data_.GetAddress(), size_);
-            } else {
-                std::uninitialized_copy_n(data_.GetAddress(), size_, new_vec.GetAddress());
-                std::destroy_n(data_.GetAddress(), size_);
-            }
-            data_.Swap(new_vec);
+            EmplaceWithRellocate(end(), std::move(value));
         }
 
         size_ = new_size;
