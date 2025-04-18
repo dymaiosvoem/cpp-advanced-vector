@@ -166,41 +166,6 @@ public:
     }
 
     template <typename ... Args>
-    void EmplaceWithoutReallocate(const_iterator pos, Args&& ... args) {
-        size_t distance_to_emplace = static_cast<size_t>(std::distance(cbegin(), pos));
-
-        if (pos == end()) {
-            new (end()) T(std::forward<Args>(args)...);
-        } else {
-            T temp_args(std::forward<Args>(args)...);
-
-            new (end()) T(std::forward<T>(data_[size_ - 1]));
-            std::move_backward(begin() + distance_to_emplace, end() - 1, end());
-            data_[distance_to_emplace] = std::move(temp_args);
-        }
-    }
-
-    template <typename ... Args>
-    void EmplaceWithReallocate(const_iterator pos, Args&& ... args) {
-        size_t distance_to_emplace = static_cast<size_t>(std::distance(cbegin(), pos));
-        size_t distance_to_end = static_cast<size_t>(std::distance(pos, cend()));
-
-        RawMemory<T> new_vec(size_ == 0 ? 1 : size_ * 2);
-        new (new_vec.GetAddress() + distance_to_emplace) T(std::forward<Args>(args)...);
-
-        if constexpr (std::is_nothrow_move_constructible_v<T> || !std::is_copy_constructible_v<T>) {
-            std::uninitialized_move_n(begin(), distance_to_emplace, new_vec.GetAddress());
-            std::uninitialized_move_n(begin() + distance_to_emplace, distance_to_end, new_vec.GetAddress() + distance_to_emplace + 1);
-            std::destroy_n(begin(), size_);
-        } else {
-            std::uninitialized_copy_n(begin(), distance_to_emplace, new_vec.GetAddress());
-            std::uninitialized_copy_n(begin() + distance_to_emplace, distance_to_end, new_vec.GetAddress() + distance_to_emplace + 1);
-            std::destroy_n(begin(), size_);
-        }
-        data_.Swap(new_vec);
-    }
-
-    template <typename ... Args>
     iterator Emplace(const_iterator pos, Args&& ... args) {
         size_t distance_to_emplace = static_cast<size_t>(std::distance(cbegin(), pos));
         size_t new_size = size_ + 1;
@@ -253,27 +218,11 @@ public:
     }
 
     void PushBack(const T& value) {
-        size_t new_size = size_ + 1;
-
-        if (Capacity() >= new_size) {
-            EmplaceWithoutReallocate(end(), value);
-        } else {
-            EmplaceWithReallocate(end(), value);
-        }
-
-        size_ = new_size;
+        EmplaceBack(value);
     }
 
     void PushBack(T&& value) {
-        size_t new_size = size_ + 1;
-
-        if (Capacity() >= new_size) {
-            EmplaceWithoutReallocate(end(), std::move(value));
-        } else {
-            EmplaceWithReallocate(end(), std::move(value));
-        }
-
-        size_ = new_size;
+        EmplaceBack(std::move(value));
     }
 
     void Resize(size_t new_size) {
@@ -338,4 +287,39 @@ public:
 private:
     RawMemory<T> data_;
     size_t size_ = 0;
+
+    template <typename ... Args>
+    void EmplaceWithoutReallocate(const_iterator pos, Args&& ... args) {
+        size_t distance_to_emplace = static_cast<size_t>(std::distance(cbegin(), pos));
+
+        if (pos == end()) {
+            new (end()) T(std::forward<Args>(args)...);
+        } else {
+            T temp_args(std::forward<Args>(args)...);
+
+            new (end()) T(std::forward<T>(data_[size_ - 1]));
+            std::move_backward(begin() + distance_to_emplace, end() - 1, end());
+            data_[distance_to_emplace] = std::move(temp_args);
+        }
+    }
+
+    template <typename ... Args>
+    void EmplaceWithReallocate(const_iterator pos, Args&& ... args) {
+        size_t distance_to_emplace = static_cast<size_t>(std::distance(cbegin(), pos));
+        size_t distance_to_end = static_cast<size_t>(std::distance(pos, cend()));
+
+        RawMemory<T> new_vec(size_ == 0 ? 1 : size_ * 2);
+        new (new_vec.GetAddress() + distance_to_emplace) T(std::forward<Args>(args)...);
+
+        if constexpr (std::is_nothrow_move_constructible_v<T> || !std::is_copy_constructible_v<T>) {
+            std::uninitialized_move_n(begin(), distance_to_emplace, new_vec.GetAddress());
+            std::uninitialized_move_n(begin() + distance_to_emplace, distance_to_end, new_vec.GetAddress() + distance_to_emplace + 1);
+            std::destroy_n(begin(), size_);
+        } else {
+            std::uninitialized_copy_n(begin(), distance_to_emplace, new_vec.GetAddress());
+            std::uninitialized_copy_n(begin() + distance_to_emplace, distance_to_end, new_vec.GetAddress() + distance_to_emplace + 1);
+            std::destroy_n(begin(), size_);
+        }
+        data_.Swap(new_vec);
+    }
 };
