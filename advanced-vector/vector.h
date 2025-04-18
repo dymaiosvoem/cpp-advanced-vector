@@ -166,7 +166,7 @@ public:
     }
 
     template <typename ... Args>
-    void EmplaceWithoutRellocate(const_iterator pos, Args&& ... args) {
+    void EmplaceWithoutReallocate(const_iterator pos, Args&& ... args) {
         size_t distance_to_emplace = static_cast<size_t>(std::distance(cbegin(), pos));
 
         if (pos == end()) {
@@ -181,7 +181,7 @@ public:
     }
 
     template <typename ... Args>
-    void EmplaceWithRellocate(const_iterator pos, Args&& ... args) {
+    void EmplaceWithReallocate(const_iterator pos, Args&& ... args) {
         size_t distance_to_emplace = static_cast<size_t>(std::distance(cbegin(), pos));
         size_t distance_to_end = static_cast<size_t>(std::distance(pos, cend()));
 
@@ -206,9 +206,9 @@ public:
         size_t new_size = size_ + 1;
 
         if (Capacity() >= new_size) {
-            EmplaceWithoutRellocate(pos, std::forward<Args>(args)...);
+            EmplaceWithoutReallocate(pos, std::forward<Args>(args)...);
         } else {
-            EmplaceWithRellocate(pos, std::forward<Args>(args)...);
+            EmplaceWithReallocate(pos, std::forward<Args>(args)...);
         }
 
         size_ = new_size;
@@ -256,9 +256,9 @@ public:
         size_t new_size = size_ + 1;
 
         if (Capacity() >= new_size) {
-            EmplaceWithoutRellocate(end(), value);
+            EmplaceWithoutReallocate(end(), value);
         } else {
-            EmplaceWithRellocate(end(), value);
+            EmplaceWithReallocate(end(), value);
         }
 
         size_ = new_size;
@@ -268,9 +268,9 @@ public:
         size_t new_size = size_ + 1;
 
         if (Capacity() >= new_size) {
-            EmplaceWithoutRellocate(end(), std::move(value));
+            EmplaceWithoutReallocate(end(), std::move(value));
         } else {
-            EmplaceWithRellocate(end(), std::move(value));
+            EmplaceWithReallocate(end(), std::move(value));
         }
 
         size_ = new_size;
