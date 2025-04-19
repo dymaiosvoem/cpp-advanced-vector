@@ -118,11 +118,11 @@ public:
     Vector() = default;
 
     Vector(size_t size) : data_(size), size_(size) {
-        std::uninitialized_value_construct_n(data_.GetAddress(), size);
+        std::uninitialized_value_construct_n(begin(), size);
     }
 
     Vector(const Vector& other) : data_(other.Size()), size_(other.Size()) {
-        std::uninitialized_copy_n(other.data_.GetAddress(), other.Size(), data_.GetAddress());
+        std::uninitialized_copy_n(other.begin(), other.Size(), begin());
     } 
 
     Vector(Vector&& other) noexcept {
@@ -136,11 +136,11 @@ public:
                 Swap(rhs_copy);
             } else {
                 if (size_ > rhs.Size()) {
-                    std::destroy_n(data_ + rhs.Size(), size_ - rhs.Size());
+                    std::destroy_n(begin() + rhs.Size(), size_ - rhs.Size());
                 } else {
-                    std::uninitialized_copy_n(rhs.data_ + size_, rhs.Size() - size_, data_.GetAddress() + size_);
+                    std::uninitialized_copy_n(rhs.begin() + size_, rhs.Size() - size_, end());
                 }
-                std::copy_n(rhs.data_.GetAddress(), std::min(rhs.Size(), size_), data_.GetAddress());
+                std::copy_n(rhs.begin(), std::min(rhs.Size(), size_), begin());
                 size_ = rhs.Size();
             }
         }
@@ -213,7 +213,7 @@ public:
         if (size_ == 0) {
             return;
         }
-        std::destroy_at(data_.GetAddress() + size_ - 1);
+        std::destroy_at(end() - 1);
         size_ -= 1;
     }
 
@@ -228,13 +228,13 @@ public:
     void Resize(size_t new_size) {
         if (Capacity() > new_size) {
             if (size_ > new_size) {
-                std::destroy_n(data_.GetAddress() + new_size, size_ - new_size);
+                std::destroy_n(begin() + new_size, size_ - new_size);
             } else {
-                std::uninitialized_value_construct_n(data_.GetAddress() + size_, new_size - size_);
+                std::uninitialized_value_construct_n(end(), new_size - size_);
             }
         } else {
             Reserve(new_size);
-            std::uninitialized_value_construct_n(data_.GetAddress() + size_, new_size - size_);
+            std::uninitialized_value_construct_n(end(), new_size - size_);
         }
 
         size_ = new_size;
@@ -248,11 +248,11 @@ public:
         RawMemory<T> new_raw_memory(new_capacity);
 
         if constexpr (std::is_nothrow_move_constructible_v<T> || !std::is_copy_constructible_v<T>) {
-            std::uninitialized_move_n(data_.GetAddress(), size_, new_raw_memory.GetAddress());
-            std::destroy_n(data_.GetAddress(), size_);
+            std::uninitialized_move_n(begin(), size_, new_raw_memory.GetAddress());
+            std::destroy_n(begin(), size_);
         } else {
-            std::uninitialized_copy_n(data_.GetAddress(), size_, new_raw_memory.GetAddress());
-            std::destroy_n(data_.GetAddress(), size_);
+            std::uninitialized_copy_n(begin(), size_, new_raw_memory.GetAddress());
+            std::destroy_n(begin(), size_);
         }
 
         data_.Swap(new_raw_memory);
@@ -281,7 +281,7 @@ public:
     }
 
     ~Vector() {
-        std::destroy_n(data_.GetAddress(), size_);
+        std::destroy_n(begin(), size_);
     }
 
 private:
